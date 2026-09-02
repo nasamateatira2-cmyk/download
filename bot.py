@@ -1,43 +1,81 @@
 import os
 import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-BOT_TOKEN = "7692511945:AAHYBk6k-Ww70lUoQSOVbs-I-s-zzsvbtro"
+BOT_TOKEN = "7692511945:AAHYBk6k-Ww7OlUoCW0iY9t95d_Z9xO4p4U"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+user_links = {}
+
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    bot.reply_to(message, " أهلاً بك يا غالي! أرسل لي أي رابط فيديو لتحميله مباشرة أستخدمه في ما يرضي الله.")
-
+    bot.reply_to(message, "أهلاً بك يا غالي! أرسل لي أي رابط لتنزيله مباشرة.")
+استخدمه بما يرضي الله عز وجل 
 @bot.message_handler(func=lambda msg: msg.text and msg.text.startswith("http"))
-def handle_video(message):
+def ask_download_type(message):
     url = message.text.strip()
-    status_msg = bot.reply_to(message, "⏳ جاري جلب الفيديو والمعالجة...")
+    user_links[message.chat.id] = url
+    
+    markup = InlineKeyboardMarkup()
+    btn_video = InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="download_video")
+    btn_audio = InlineKeyboardButton("🎵 تحميل صوت فقط (MP3)", callback_data="download_audio")
+    markup.row(btn_video, btn_audio)
+    
+    bot.reply_to(message, "اختر طريقة التحميل المطلوبة:", reply_markup=markup)
 
-    ydl_opts = {
-        'format': 'best[ext=mp4][filesize<50M]/bestvideo[ext=mp4][filesize<40M]+bestaudio[ext=m4a]/best',
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
-        'quiet': True,
-        'no_warnings': True,
-    }
+@bot.callback_query_handler(func=lambda call: True)
+def process_download(call):
+    chat_id = call.message.chat.id
+    url = user_links.get(chat_id)
+    
+    if not url:
+        bot.answer_callback_query(call.id, "انتهت صلاحية الطلب، أرسل الرابط مرة أخرى.")
+        return
+
+    bot.answer_callback_query(call.id)
+    bot.edit_message_text("⏳ جاري المعالجة والتحميل، اذكر الله ...", chat_id=chat_id, message_id=call.message.message_id)
+
+    if call.data == "download_video":
+        ydl_opts = {
+            'format': 'best[ext=mp4][filesize<48M]/best[filesize<48M]/best',
+            'outtmpl': f'downloads/{chat_id}_video.%(ext)s',
+            'quiet': True,
+            'no_warnings': True
+        }
+    else:
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': f'downloads/{chat_id}_audio.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+            'no_warnings': True
+        }
 
     try:
+        os.makedirs('downloads', exist_ok=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
+            filename = ydl.prepare_filename(info)
+            
+            if call.data == "download_audio":
+                filename = os.path.splitext(filename)[0] + ".mp3"
 
-            with open(file_path, 'rb') as video_file:
-                bot.send_video(message.chat.id, video_file, caption="تم التحميل بنجاح ✅")
-
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
-            bot.delete_message(message.chat.id, status_msg.message_id)
-
-    except Exception:
-        bot.edit_message_text("❌ تعذر التحميل: تأكد من صحة الرابط أو قد يكون حجم الفيديو أكبر من 50 ميغابايت.", 
-                              message.chat.id, status_msg.message_id)
+        if os.path.exists(filename):
+            with open(filename, 'rb') as media_file:
+                if call.data == "download_video":
+                    bot.send_video(chat_id, media_file, caption="تم التحميل بنجاح ✅")
+                else:
+                    bot.send_audio(chat_id, media_file, caption="تم استخراج الصوت بنجاح 🎵")
+            
+            os.remove(filename)
+            bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
+    except Exception as e:
+        bot.send_message(chat_id, f"عذراً، حدث خطأ أثناء التحميل: {str(e)[:100]}")
 
 bot.infinity_polling()
-
