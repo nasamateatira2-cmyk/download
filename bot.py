@@ -11,8 +11,13 @@ user_links = {}
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    bot.reply_to(message, "أهلاً بك يا غالي! أرسل لي أي رابط لتنزيله مباشرة.")
-استخدمه بما يرضي الله عز وجل 
+    welcome_text = (
+        "تم إنشاء هذا البوت من قبل أبو الجود ✨\n\n"
+        "أهلاً وسهلاً بك يا غالي! أرسل لي أي رابط لتنزيله مباشرة.\n"
+        "(استخدمه بما يرضي الله عز وجل)"
+    )
+    bot.reply_to(message, welcome_text)
+
 @bot.message_handler(func=lambda msg: msg.text and msg.text.startswith("http"))
 def ask_download_type(message):
     url = message.text.strip()
@@ -35,7 +40,7 @@ def process_download(call):
         return
 
     bot.answer_callback_query(call.id)
-    bot.edit_message_text("⏳ جاري المعالجة والتحميل، اذكر الله ...", chat_id=chat_id, message_id=call.message.message_id)
+    bot.edit_message_text("⏳ جاري المعالجة... اذكر الله", chat_id=chat_id, message_id=call.message.message_id)
 
     if call.data == "download_video":
         ydl_opts = {
@@ -69,9 +74,9 @@ def process_download(call):
         if os.path.exists(filename):
             with open(filename, 'rb') as media_file:
                 if call.data == "download_video":
-                    bot.send_video(chat_id, media_file, caption="تم التحميل بنجاح ✅")
+                    bot.send_video(chat_id, media_file, caption="تم التحميل بنجاح ✅\n(استخدمه بما يرضي الله عز وجل)")
                 else:
-                    bot.send_audio(chat_id, media_file, caption="تم استخراج الصوت بنجاح 🎵")
+                    bot.send_audio(chat_id, media_file, caption="تم استخراج الصوت بنجاح 🎵\n(استخدمه بما يرضي الله عز وجل)")
             
             os.remove(filename)
             bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
