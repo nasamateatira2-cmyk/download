@@ -1,86 +1,82 @@
 import os
+import threading
+import glob
+from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-BOT_TOKEN = "7692511945:AAHYBk6k-Ww70lUoQSOVbs-I-s-zzsvbtro"
+# تشغيل خادم ويب داخلي لمنع خطأ 15 دقيقة على Render
+web_app = Flask(__name__)
 
+@web_app.route('/')
+def home():
+    return "Downloader Bot is Running 24/7!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host="0.0.0.0", port=port)
+
+# جلب التوكن بأمان من متغيرات البيئة
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-user_links = {}
+WELCOME_MSG = (
+    "تم انشاء هذا البوت من قبل ابو الجود 🌟\n\n"
+    "اهلا وسهلا بك يا غالي ارسل اي رابط لتنزيله مباشرة\n"
+    "(استخدمه بما يرضي الله عز وجل)"
+)
 
 @bot.message_handler(commands=['start'])
-def welcome(message):
-    welcome_text = (
-        "تم إنشاء هذا البوت من قبل أبو الجود ✨\n\n"
-        "أهلاً وسهلاً بك يا غالي! أرسل لي أي رابط لتنزيله مباشرة.\n"
-        "(استخدمه بما يرضي الله عز وجل)"
-    )
-    bot.reply_to(message, welcome_text)
+def send_welcome(message):
+    bot.reply_to(message, WELCOME_MSG)
 
 @bot.message_handler(func=lambda msg: msg.text and msg.text.startswith("http"))
-def ask_download_type(message):
+def handle_download(message):
     url = message.text.strip()
-    user_links[message.chat.id] = url
-    
-    markup = InlineKeyboardMarkup()
-    btn_video = InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="download_video")
-    btn_audio = InlineKeyboardButton("🎵 تحميل صوت فقط (MP3)", callback_data="download_audio")
-    markup.row(btn_video, btn_audio)
-    
-    bot.reply_to(message, "اختر طريقة التحميل المطلوبة:", reply_markup=markup)
+    status_msg = bot.reply_to(message, "⏳ جاري المعالجة اذكر الله...")
 
-@bot.callback_query_handler(func=lambda call: True)
-def process_download(call):
-    chat_id = call.message.chat.id
-    url = user_links.get(chat_id)
-    
-    if not url:
-        bot.answer_callback_query(call.id, "انتهت صلاحية الطلب، أرسل الرابط مرة أخرى.")
-        return
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'downloads/{message.chat.id}_%(id)s.%(ext)s',
+        'max_filesize': 48 * 1024 * 1024, # حد أقصى 48MB لحجم تيليجرام
+        'quiet': True,
+        'no_warnings': True,
+    }
 
-    bot.answer_callback_query(call.id)
-    bot.edit_message_text("⏳ جاري المعالجة... اذكر الله", chat_id=chat_id, message_id=call.message.message_id)
-
-    if call.data == "download_video":
-        ydl_opts = {
-            'format': 'best[ext=mp4][filesize<48M]/best[filesize<48M]/best',
-            'outtmpl': f'downloads/{chat_id}_video.%(ext)s',
-            'quiet': True,
-            'no_warnings': True
-        }
-    else:
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': f'downloads/{chat_id}_audio.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'quiet': True,
-            'no_warnings': True
-        }
+    os.makedirs("downloads", exist_ok=True)
+    video_path = None
 
     try:
-        os.makedirs('downloads', exist_ok=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            if call.data == "download_audio":
-                filename = os.path.splitext(filename)[0] + ".mp3"
+            video_path = ydl.prepare_filename(info)
 
-        if os.path.exists(filename):
-            with open(filename, 'rb') as media_file:
-                if call.data == "download_video":
-                    bot.send_video(chat_id, media_file, caption="تم التحميل بنجاح ✅\n(استخدمه بما يرضي الله عز وجل)")
-                else:
-                    bot.send_audio(chat_id, media_file, caption="تم استخراج الصوت بنجاح 🎵\n(استخدمه بما يرضي الله عز وجل)")
-            
-            os.remove(filename)
-            bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
+        if video_path and os.path.exists(video_path):
+            with open(video_path, 'rb') as video_file:
+                bot.send_video(
+                    chat_id=message.chat.id,
+                    video=video_file,
+                    caption="✅ تم التحميل بنجاح بواسطة بوت ابو الجود",
+                    reply_to_message_id=message.message_id
+                )
+            bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+        else:
+            bot.edit_message_text("❌ تعذر العثور على الملف المحمل.", chat_id=message.chat.id, message_id=status_msg.message_id)
+
+    except yt_dlp.utils.DownloadError as e:
+        bot.edit_message_text("❌ تعذر تحميل هذا الرابط، أو أن حجم الفيديو يتجاوز حد تيليجرام (50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
     except Exception as e:
-        bot.send_message(chat_id, f"عذراً، حدث خطأ أثناء التحميل: {str(e)[:100]}")
+        bot.edit_message_text(f"❌ حدث خطأ غير متوقع أثناء التحميل.", chat_id=message.chat.id, message_id=status_msg.message_id)
+    finally:
+        # تنظيف الملفات المؤقتة لتوفير مساحة السيرفر
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
 
-bot.infinity_polling()
+if __name__ == "__main__":
+    threading.Thread(target=run_web, daemon=True).start()
+    print("Downloader Bot Started Successfully...")
+    bot.infinity_polling(skip_pending=True)
