@@ -3,7 +3,7 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-BOT_TOKEN = "7692511945:AAHYBk6k-Ww7OlUoCW0iY9t95d_Z9xO4p4U"
+BOT_TOKEN = "7692511945:AAHYBk6k-Ww70lUoQSOVbs-I-s-zzsvbtro"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
