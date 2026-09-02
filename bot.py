@@ -1,12 +1,10 @@
 import os
 import threading
-import glob
 from flask import Flask
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-# تشغيل خادم ويب داخلي لمنع خطأ 15 دقيقة على Render
+# تشغيل خادم ويب داخلي لمنع فشل البناء على Render
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -17,7 +15,7 @@ def run_web():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port)
 
-# جلب التوكن بأمان من متغيرات البيئة
+# قراءة التوكن بأمان من متغيرات البيئة في Render
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -39,7 +37,7 @@ def handle_download(message):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'downloads/{message.chat.id}_%(id)s.%(ext)s',
-        'max_filesize': 48 * 1024 * 1024, # حد أقصى 48MB لحجم تيليجرام
+        'max_filesize': 48 * 1024 * 1024,
         'quiet': True,
         'no_warnings': True,
     }
@@ -64,12 +62,12 @@ def handle_download(message):
         else:
             bot.edit_message_text("❌ تعذر العثور على الملف المحمل.", chat_id=message.chat.id, message_id=status_msg.message_id)
 
-    except yt_dlp.utils.DownloadError as e:
+    except yt_dlp.utils.DownloadError:
         bot.edit_message_text("❌ تعذر تحميل هذا الرابط، أو أن حجم الفيديو يتجاوز حد تيليجرام (50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ حدث خطأ غير متوقع أثناء التحميل.", chat_id=message.chat.id, message_id=status_msg.message_id)
+        bot.edit_message_text("❌ حدث خطأ أثناء المعالجة.", chat_id=message.chat.id, message_id=status_msg.message_id)
+        print(f"Error: {e}")
     finally:
-        # تنظيف الملفات المؤقتة لتوفير مساحة السيرفر
         if video_path and os.path.exists(video_path):
             try:
                 os.remove(video_path)
