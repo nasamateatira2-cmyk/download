@@ -8,7 +8,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    bot.reply_to(message, "أهلاً بك يا غالي! أرسل لي أي رابط فيديو لتحميله مباشرة.")
+    bot.reply_to(message, " أهلاً بك يا غالي! أرسل لي أي رابط فيديو لتحميله مباشرة أستخدمه في ما يرضي الله.")
 
 @bot.message_handler(func=lambda msg: msg.text and msg.text.startswith("http"))
 def handle_video(message):
